@@ -1501,6 +1501,55 @@ GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window,
     return GLFW_TRUE;
 }
 
+GLFWbool _glfwCreateWindowWin32FromWGLContext(_GLFWwindow* window,
+                                              const _GLFWwndconfig* wndconfig,
+                                              const _GLFWctxconfig* ctxconfig,
+                                              const _GLFWfbconfig* fbconfig,
+                                              HGLRC context)
+{
+    if (!createNativeWindow(window, wndconfig, fbconfig))
+        return GLFW_FALSE;
+
+    if (ctxconfig->client != GLFW_NO_API)
+    {
+        if (ctxconfig->source == GLFW_NATIVE_CONTEXT_API)
+        {
+            if (!_glfwInitWGL())
+                return GLFW_FALSE;
+            if (!_glfwCreateSharedContextWGL(window, ctxconfig, fbconfig, context))
+                return GLFW_FALSE;
+        }
+
+        if (!_glfwRefreshContextAttribs(window, ctxconfig))
+            return GLFW_FALSE;
+    }
+
+    if (wndconfig->mousePassthrough)
+        _glfwSetWindowMousePassthroughWin32(window, GLFW_TRUE);
+
+    if (window->monitor)
+    {
+        _glfwShowWindowWin32(window);
+        _glfwFocusWindowWin32(window);
+        acquireMonitor(window);
+        fitToMonitor(window);
+
+        if (wndconfig->centerCursor)
+            _glfwCenterCursorInContentArea(window);
+    }
+    else
+    {
+        if (wndconfig->visible)
+        {
+            _glfwShowWindowWin32(window);
+            if (wndconfig->focused)
+                _glfwFocusWindowWin32(window);
+        }
+    }
+
+    return GLFW_TRUE;
+}
+
 void _glfwDestroyWindowWin32(_GLFWwindow* window)
 {
     if (window->monitor)

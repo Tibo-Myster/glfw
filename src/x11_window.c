@@ -2044,6 +2044,73 @@ GLFWbool _glfwCreateWindowX11(_GLFWwindow* window,
     return GLFW_TRUE;
 }
 
+GLFWbool _glfwCreateWindowX11FromGLXContext(_GLFWwindow* window,
+                                            const _GLFWwndconfig* wndconfig,
+                                            const _GLFWctxconfig* ctxconfig,
+                                            const _GLFWfbconfig* fbconfig,
+                                            GLXContext context)
+{
+    Visual* visual = NULL;
+    int depth;
+
+    if (ctxconfig->client != GLFW_NO_API)
+    {
+        if (ctxconfig->source == GLFW_NATIVE_CONTEXT_API)
+        {
+            if (!_glfwInitGLX())
+                return GLFW_FALSE;
+            if (!_glfwChooseVisualGLX(wndconfig, ctxconfig, fbconfig, &visual, &depth))
+                return GLFW_FALSE;
+        }
+    }
+
+    if (!visual)
+    {
+        visual = DefaultVisual(_glfw.x11.display, _glfw.x11.screen);
+        depth = DefaultDepth(_glfw.x11.display, _glfw.x11.screen);
+    }
+
+    if (!createNativeWindow(window, wndconfig, visual, depth))
+        return GLFW_FALSE;
+
+    if (ctxconfig->client != GLFW_NO_API)
+    {
+        if (ctxconfig->source == GLFW_NATIVE_CONTEXT_API)
+        {
+            if (!_glfwCreateSharedContextGLX(window, ctxconfig, fbconfig, context))
+                return GLFW_FALSE;
+        }
+
+        if (!_glfwRefreshContextAttribs(window, ctxconfig))
+            return GLFW_FALSE;
+    }
+
+    if (wndconfig->mousePassthrough)
+        _glfwSetWindowMousePassthroughX11(window, GLFW_TRUE);
+
+    if (window->monitor)
+    {
+        _glfwShowWindowX11(window);
+        updateWindowMode(window);
+        acquireMonitor(window);
+
+        if (wndconfig->centerCursor)
+            _glfwCenterCursorInContentArea(window);
+    }
+    else
+    {
+        if (wndconfig->visible)
+        {
+            _glfwShowWindowX11(window);
+            if (wndconfig->focused)
+                _glfwFocusWindowX11(window);
+        }
+    }
+
+    XFlush(_glfw.x11.display);
+    return GLFW_TRUE;
+}
+
 void _glfwDestroyWindowX11(_GLFWwindow* window)
 {
     if (_glfw.x11.disabledCursorWindow == window)

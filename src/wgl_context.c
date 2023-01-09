@@ -778,5 +778,248 @@ GLFWAPI HGLRC glfwGetWGLContext(GLFWwindow* handle)
     return window->context.wgl.handle;
 }
 
+#define SET_ATTRIB(a, v) \
+{ \
+    assert(((size_t) index + 1) < sizeof(attribs) / sizeof(attribs[0])); \
+    attribs[index++] = a; \
+    attribs[index++] = v; \
+}
+
+GLFWbool _glfwCreateSharedContextWGL(_GLFWwindow* window,
+                                     const _GLFWctxconfig* ctxconfig,
+                                     const _GLFWfbconfig* fbconfig,
+                                     HGLRC context)
+{
+    int attribs[40];
+    int pixelFormat;
+    PIXELFORMATDESCRIPTOR pfd;
+    HGLRC share = NULL;
+
+    if (ctxconfig->share)
+        share = context;
+
+    window->context.wgl.dc = GetDC(window->win32.handle);
+    if (!window->context.wgl.dc)
+    {
+        _glfwInputError(GLFW_PLATFORM_ERROR,
+                        "WGL: Failed to retrieve DC for window");
+        return GLFW_FALSE;
+    }
+
+    pixelFormat = choosePixelFormatWGL(window, ctxconfig, fbconfig);
+    if (!pixelFormat)
+        return GLFW_FALSE;
+
+    if (!DescribePixelFormat(window->context.wgl.dc,
+                             pixelFormat, sizeof(pfd), &pfd))
+    {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
+                             "WGL: Failed to retrieve PFD for selected pixel format");
+        return GLFW_FALSE;
+    }
+
+    if (!SetPixelFormat(window->context.wgl.dc, pixelFormat, &pfd))
+    {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
+                             "WGL: Failed to set selected pixel format");
+        return GLFW_FALSE;
+    }
+
+    if (ctxconfig->client == GLFW_OPENGL_API)
+    {
+        if (ctxconfig->forward)
+        {
+            if (!_glfw.wgl.ARB_create_context)
+            {
+                _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                "WGL: A forward compatible OpenGL context requested but WGL_ARB_create_context is unavailable");
+                return GLFW_FALSE;
+            }
+        }
+
+        if (ctxconfig->profile)
+        {
+            if (!_glfw.wgl.ARB_create_context_profile)
+            {
+                _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                "WGL: OpenGL profile requested but WGL_ARB_create_context_profile is unavailable");
+                return GLFW_FALSE;
+            }
+        }
+    }
+    else
+    {
+        if (!_glfw.wgl.ARB_create_context ||
+            !_glfw.wgl.ARB_create_context_profile ||
+            !_glfw.wgl.EXT_create_context_es2_profile)
+        {
+            _glfwInputError(GLFW_API_UNAVAILABLE,
+                            "WGL: OpenGL ES requested but WGL_ARB_create_context_es2_profile is unavailable");
+            return GLFW_FALSE;
+        }
+    }
+
+    if (_glfw.wgl.ARB_create_context)
+    {
+        int index = 0, mask = 0, flags = 0;
+
+        if (ctxconfig->client == GLFW_OPENGL_API)
+        {
+            if (ctxconfig->forward)
+                flags |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+
+            if (ctxconfig->profile == GLFW_OPENGL_CORE_PROFILE)
+                mask |= WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+            else if (ctxconfig->profile == GLFW_OPENGL_COMPAT_PROFILE)
+                mask |= WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+        }
+        else
+            mask |= WGL_CONTEXT_ES2_PROFILE_BIT_EXT;
+
+        if (ctxconfig->debug)
+            flags |= WGL_CONTEXT_DEBUG_BIT_ARB;
+
+        if (ctxconfig->robustness)
+        {
+            if (_glfw.wgl.ARB_create_context_robustness)
+            {
+                if (ctxconfig->robustness == GLFW_NO_RESET_NOTIFICATION)
+                {
+                    SET_ATTRIB(WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB,
+                               WGL_NO_RESET_NOTIFICATION_ARB);
+                }
+                else if (ctxconfig->robustness == GLFW_LOSE_CONTEXT_ON_RESET)
+                {
+                    SET_ATTRIB(WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB,
+                               WGL_LOSE_CONTEXT_ON_RESET_ARB);
+                }
+
+                flags |= WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
+            }
+        }
+
+        if (ctxconfig->release)
+        {
+            if (_glfw.wgl.ARB_context_flush_control)
+            {
+                if (ctxconfig->release == GLFW_RELEASE_BEHAVIOR_NONE)
+                {
+                    SET_ATTRIB(WGL_CONTEXT_RELEASE_BEHAVIOR_ARB,
+                               WGL_CONTEXT_RELEASE_BEHAVIOR_NONE_ARB);
+                }
+                else if (ctxconfig->release == GLFW_RELEASE_BEHAVIOR_FLUSH)
+                {
+                    SET_ATTRIB(WGL_CONTEXT_RELEASE_BEHAVIOR_ARB,
+                               WGL_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB);
+                }
+            }
+        }
+
+        if (ctxconfig->noerror)
+        {
+            if (_glfw.wgl.ARB_create_context_no_error)
+                SET_ATTRIB(WGL_CONTEXT_OPENGL_NO_ERROR_ARB, GLFW_TRUE);
+        }
+
+        // NOTE: Only request an explicitly versioned context when necessary, as
+        //       explicitly requesting version 1.0 does not always return the
+        //       highest version supported by the driver
+        if (ctxconfig->major != 1 || ctxconfig->minor != 0)
+        {
+            SET_ATTRIB(WGL_CONTEXT_MAJOR_VERSION_ARB, ctxconfig->major);
+            SET_ATTRIB(WGL_CONTEXT_MINOR_VERSION_ARB, ctxconfig->minor);
+        }
+
+        if (flags)
+            SET_ATTRIB(WGL_CONTEXT_FLAGS_ARB, flags);
+
+        if (mask)
+            SET_ATTRIB(WGL_CONTEXT_PROFILE_MASK_ARB, mask);
+
+        SET_ATTRIB(0, 0);
+
+        window->context.wgl.handle =
+            wglCreateContextAttribsARB(window->context.wgl.dc, share, attribs);
+        if (!window->context.wgl.handle)
+        {
+            const DWORD error = GetLastError();
+
+            if (error == (0xc0070000 | ERROR_INVALID_VERSION_ARB))
+            {
+                if (ctxconfig->client == GLFW_OPENGL_API)
+                {
+                    _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                    "WGL: Driver does not support OpenGL version %i.%i",
+                                    ctxconfig->major,
+                                    ctxconfig->minor);
+                }
+                else
+                {
+                    _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                    "WGL: Driver does not support OpenGL ES version %i.%i",
+                                    ctxconfig->major,
+                                    ctxconfig->minor);
+                }
+            }
+            else if (error == (0xc0070000 | ERROR_INVALID_PROFILE_ARB))
+            {
+                _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                "WGL: Driver does not support the requested OpenGL profile");
+            }
+            else if (error == (0xc0070000 | ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB))
+            {
+                _glfwInputError(GLFW_INVALID_VALUE,
+                                "WGL: The share context is not compatible with the requested context");
+            }
+            else
+            {
+                if (ctxconfig->client == GLFW_OPENGL_API)
+                {
+                    _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                    "WGL: Failed to create OpenGL context");
+                }
+                else
+                {
+                    _glfwInputError(GLFW_VERSION_UNAVAILABLE,
+                                    "WGL: Failed to create OpenGL ES context");
+                }
+            }
+
+            return GLFW_FALSE;
+        }
+    }
+    else
+    {
+        window->context.wgl.handle = wglCreateContext(window->context.wgl.dc);
+        if (!window->context.wgl.handle)
+        {
+            _glfwInputErrorWin32(GLFW_VERSION_UNAVAILABLE,
+                                 "WGL: Failed to create OpenGL context");
+            return GLFW_FALSE;
+        }
+
+        if (share)
+        {
+            if (!wglShareLists(share, window->context.wgl.handle))
+            {
+                _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
+                                     "WGL: Failed to enable sharing with specified OpenGL context");
+                return GLFW_FALSE;
+            }
+        }
+    }
+
+    window->context.makeCurrent = makeContextCurrentWGL;
+    window->context.swapBuffers = swapBuffersWGL;
+    window->context.swapInterval = swapIntervalWGL;
+    window->context.extensionSupported = extensionSupportedWGL;
+    window->context.getProcAddress = getProcAddressWGL;
+    window->context.destroy = destroyContextWGL;
+
+    return GLFW_TRUE;
+}
+
+#undef SET_ATTRIB
+
 #endif // _GLFW_WIN32
 

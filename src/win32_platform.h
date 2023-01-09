@@ -540,6 +540,7 @@ void _glfwRestoreVideoModeWin32(_GLFWmonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
 GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
+GLFWbool _glfwCreateWindowWin32FromWGLContext(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig, HGLRC context);
 void _glfwDestroyWindowWin32(_GLFWwindow* window);
 void _glfwSetWindowTitleWin32(_GLFWwindow* window, const char* title);
 void _glfwSetWindowIconWin32(_GLFWwindow* window, int count, const GLFWimage* images);
@@ -621,4 +622,8 @@ void _glfwTerminateWGL(void);
 GLFWbool _glfwCreateContextWGL(_GLFWwindow* window,
                                const _GLFWctxconfig* ctxconfig,
                                const _GLFWfbconfig* fbconfig);
+GLFWbool _glfwCreateSharedContextWGL(_GLFWwindow* window,
+                                     const _GLFWctxconfig* ctxconfig,
+                                     const _GLFWfbconfig* fbconfig,
+                                     GLFWContext context);
 
