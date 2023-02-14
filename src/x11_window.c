@@ -2048,8 +2048,10 @@ GLFWbool _glfwCreateWindowX11FromGLXContext(_GLFWwindow* window,
                                             const _GLFWwndconfig* wndconfig,
                                             const _GLFWctxconfig* ctxconfig,
                                             const _GLFWfbconfig* fbconfig,
-                                            GLXContext context)
+                                            /*GLXContext*/int context_ptr)
 {
+    GLXContext context = (void*)context_ptr;
+
     Visual* visual = NULL;
     int depth;
 

@@ -254,6 +254,83 @@ GLFWAPI GLFWwindow* glfwCreateWindow(int width, int height,
     return (GLFWwindow*) window;
 }
 
+GLFWAPI GLFWwindow* glfwCreateWindowFromContext(int width, int height,
+                                                const char* title,
+                                                GLFWmonitor* monitor,
+                                                GLFWwindow* share,
+                                                int context)
+{
+    _GLFWfbconfig fbconfig;
+    _GLFWctxconfig ctxconfig;
+    _GLFWwndconfig wndconfig;
+    _GLFWwindow* window;
+
+    assert(title != NULL);
+    assert(width >= 0);
+    assert(height >= 0);
+
+    _GLFW_REQUIRE_INIT_OR_RETURN(NULL);
+
+    if (width <= 0 || height <= 0)
+    {
+        _glfwInputError(GLFW_INVALID_VALUE,
+                        "Invalid window size %ix%i",
+                        width, height);
+
+        return NULL;
+    }
+
+    fbconfig  = _glfw.hints.framebuffer;
+    ctxconfig = _glfw.hints.context;
+    wndconfig = _glfw.hints.window;
+
+    wndconfig.width   = width;
+    wndconfig.height  = height;
+    wndconfig.title   = title;
+    ctxconfig.share   = (_GLFWwindow*) share;
+
+    if (!_glfwIsValidContextConfig(&ctxconfig))
+        return NULL;
+
+    window = _glfw_calloc(1, sizeof(_GLFWwindow));
+    window->next = _glfw.windowListHead;
+    _glfw.windowListHead = window;
+
+    window->videoMode.width       = width;
+    window->videoMode.height      = height;
+    window->videoMode.redBits     = fbconfig.redBits;
+    window->videoMode.greenBits   = fbconfig.greenBits;
+    window->videoMode.blueBits    = fbconfig.blueBits;
+    window->videoMode.refreshRate = _glfw.hints.refreshRate;
+
+    window->monitor          = (_GLFWmonitor*) monitor;
+    window->resizable        = wndconfig.resizable;
+    window->decorated        = wndconfig.decorated;
+    window->autoIconify      = wndconfig.autoIconify;
+    window->floating         = wndconfig.floating;
+    window->focusOnShow      = wndconfig.focusOnShow;
+    window->mousePassthrough = wndconfig.mousePassthrough;
+    window->cursorMode       = GLFW_CURSOR_NORMAL;
+
+    window->doublebuffer = fbconfig.doublebuffer;
+
+    window->minwidth    = GLFW_DONT_CARE;
+    window->minheight   = GLFW_DONT_CARE;
+    window->maxwidth    = GLFW_DONT_CARE;
+    window->maxheight   = GLFW_DONT_CARE;
+    window->numer       = GLFW_DONT_CARE;
+    window->denom       = GLFW_DONT_CARE;
+
+    // if (!_glfw.platform.createWindow(window, &wndconfig, &ctxconfig, &fbconfig))
+    if (!_glfw.platform.createWindowFromContext(window, &wndconfig, &ctxconfig, &fbconfig, context))
+    {
+        glfwDestroyWindow((GLFWwindow*) window);
+        return NULL;
+    }
+
+    return (GLFWwindow*) window;
+}
+
 void glfwDefaultWindowHints(void)
 {
     _GLFW_REQUIRE_INIT();

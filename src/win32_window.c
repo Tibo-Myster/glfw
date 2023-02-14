@@ -1505,8 +1505,10 @@ GLFWbool _glfwCreateWindowWin32FromWGLContext(_GLFWwindow* window,
                                               const _GLFWwndconfig* wndconfig,
                                               const _GLFWctxconfig* ctxconfig,
                                               const _GLFWfbconfig* fbconfig,
-                                              HGLRC context)
+                                              /*HGLRC*/int context_ptr)
 {
+    HGLRC context = (void*)context_ptr;
+
     if (!createNativeWindow(window, wndconfig, fbconfig))
         return GLFW_FALSE;
 
